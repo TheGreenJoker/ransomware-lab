@@ -108,7 +108,7 @@ ransomware-lab/
 ### Requirements
 
 ```bash
-pip install cryptography
+pip install cryptography  --break-system-packages
 ```
 
 ### Step 1 — Generate RSA keypair (attacker)
