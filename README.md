@@ -75,14 +75,17 @@ generate RSA-2048 keypair
                                       ← exfiltrate encrypted AES key (TCP)
                                       drop ransom note
 
+                                      decryptserver.py starts, waits on TCP port
+
 receive encrypted AES key
 decrypt with private.pem → AES key
-─────────────────────────────────→   decrypt.py receives AES key
+send AES key in plaintext ────────→  decryptserver.py receives AES key
                                       for each .enc file:
                                         read IV (first 16 bytes)
                                         decrypt with AES-256-CBC
                                         unpad PKCS7
                                         restore original file
+                                      delete ransom note
 ```
 
 ---
@@ -91,10 +94,11 @@ decrypt with private.pem → AES key
 
 ```
 ransomware-lab/
-├── genkey.py       # generate RSA keypair (run on attacker)
-├── ransom.py       # encrypt target directory (run on target)
-├── keyserver.py    # receive exfiltrated AES keys (run on attacker)
-└── decrypt.py      # restore files after "payment" (run on attacker → target)
+├── genkey.py           # generate RSA keypair (run on attacker)
+├── ransom.py           # encrypt target directory (run on target)
+├── keyserver.py        # receive exfiltrated AES keys (run on attacker)
+├── decrypt.py          # decrypt AES key and send it to target (run on attacker)
+└── decryptserver.py    # receive AES key and decrypt files locally (run on target)
 ```
 
 ---
@@ -146,13 +150,21 @@ The script will:
 - Exfiltrate the encrypted AES key to the attacker's keyserver
 - Drop a `README_DECRYPT.txt` ransom note
 
-### Step 5 — Decrypt files (attacker)
+### Step 5 — Start decrypt server on target (target)
+
+```bash
+# The target starts a server waiting for the AES key
+python3 decryptserver.py /home/victim/documents 7777
+```
+
+### Step 6 — Send AES key to target (attacker)
 
 ```bash
 # Use the victim_id printed by keyserver.py
-python3 decrypt.py /home/victim/documents <VICTIM_ID> \
-    private.pem received_keys/<VICTIM_ID>.hex
+python3 decrypt.py <VICTIM_ID> private.pem received_keys/<VICTIM_ID>.hex <target_ip>:7777
 ```
+
+`decrypt.py` decrypts the AES key locally using `private.pem`, then sends it in plaintext to the target's decrypt server over TCP. The target decrypts its own files without the attacker ever needing SSH access.
 
 ---
 
